@@ -8,6 +8,8 @@ import logging
 import sympy as sym
 import matplotlib.pyplot as plt
 
+from laplace import laplaceInput
+
 # Variables globales
 data_od_value = []
 data_ramp_value = []
@@ -15,7 +17,7 @@ data_time = []
 exit = False
 rpm = 0
 
-def scpa(c_max: float, c_min: float, tau: float, rpm_max: float):
+def scpa(c_max: float, c_min: float, tau: float, rpm_max: float, rpm_acel: float):
     global exit
     global rpm
     global data_od_value
@@ -39,46 +41,53 @@ def scpa(c_max: float, c_min: float, tau: float, rpm_max: float):
     # Sistema
     A_s = a / s
     C_s = k / (T * s + 1)
-    U_s = 0
+
+    # Entrada
+    U = laplaceInput(rpm / rpm_max)
+
+    U_s = U.getInput()
 
     G_t = sym.inverse_laplace_transform(C_s * U_s + A_s, s, t)
     U_t = sym.inverse_laplace_transform(U_s, s, t)
 
-    # Variable de seguimiento
+    # Variables
     current_rpm = rpm
+    t_delta = 0
 
     while(not exit):
+        # Si el tiempo de operación fue largo se recorta el vector de datos
+        if t_t > (7 + t_delta):
+            data_od_value.clear()
+            data_ramp_value.clear();
+            data_time.clear()
+
+            t_t = 0.01
+
+            U = laplaceInput((rpm / rpm_max) * (1 + 1 / s))
+
+            U_s = U.getInput()
+
+            G_t = sym.inverse_laplace_transform(C_s * U_s + A_s, s, t)
+            U_t = sym.inverse_laplace_transform(U_s, s, t)
+
         # Si las rpm cambiaron se ajusta el sistema
         if rpm != current_rpm:
-            t_t = 0.01
-            c_min = c_t
+            t_delta = t_t
 
-            if rpm > current_rpm:
-                U1_s = (rpm / rpm_max) / (0.20 * s**2)
-                U2_s = 1 - sym.exp(-0.20 * s)
+            U.addRampInput(t_t, rpm / rpm_max, rpm_acel)
 
-                U_s = U1_s * U2_s
+            U_s = U.getInput()
 
-                G_t = sym.inverse_laplace_transform(C_s * U_s + A_s, s, t)
-                U_t = sym.inverse_laplace_transform(U_s, s, t)
-
-            else:
-                U1_s = -(rpm / rpm_max) / (0.20 * s**2)
-                U2_s = 1 - sym.exp(-0.20 * s)
-
-                U_s = U1_s * U2_s
-
-                G_t = sym.inverse_laplace_transform(C_s * U_s + A_s, s, t)
-                U_t = sym.inverse_laplace_transform(U_s, s, t)
-
+            G_t = sym.inverse_laplace_transform(C_s * U_s + A_s, s, t)
+            U_t = sym.inverse_laplace_transform(U_s, s, t)
+            
             current_rpm = rpm
 
         # Se sustituyen los valores
         c_t = sym.exp.subs(G_t, ([a, c_min], [k, c_max - c_min], [T, tau], [t, t_t]))
-        
         u_t = sym.exp.subs(U_t, ([t, t_t], ))
 
-        logging.info("OD = %f", c_t)
+        logging.info("t = %f, OD = %f", t_t, c_t)
 
         # Se guarda para graficar
         data_od_value.append(c_t)
@@ -125,6 +134,7 @@ def main(args: list[str]=[]) -> int:
     c_min = None        # Valor mínimo de OD
     tau = None          # Constante de tiempo
     rpm_max = None      # Revoluciones por minuto maximas del sistema
+    rpm_acel = None     # Rampa de aceleracion del variador
 
     for i in args:
         if i.find("-c_max=") == 0:
@@ -139,7 +149,10 @@ def main(args: list[str]=[]) -> int:
         if i.find("-rpm_max=") == 0:
             rpm_max = float(i.strip("-rpm_max="))
 
-    if (c_max is None) or (c_min is None) or (tau is None) or (rpm_max is None):
+        if i.find("-rpm_acel=") == 0:
+            rpm_acel = float(i.strip("-rpm_acel="))
+
+    if (c_max is None) or (c_min is None) or (tau is None) or (rpm_max is None) or (rpm_acel is None):
         logging.fatal("Tiene que especificar las constantes del sistema")
 
         return -1
@@ -148,9 +161,10 @@ def main(args: list[str]=[]) -> int:
     logging.info("c_min = %f", c_min)
     logging.info("tau = %f", tau)
     logging.info("rpm_max = %f", rpm_max)
+    logging.info("rpm_acel = %f", rpm_acel)
 
     # Inicio de la simulación
-    threadSCPA = threading.Thread(name="SCPA", target=scpa, args=(c_max, c_min, tau, rpm_max))
+    threadSCPA = threading.Thread(name="SCPA", target=scpa, args=(c_max, c_min, tau, rpm_max, rpm_acel))
     threadSCPA.start()
 
     # Inicio la captura de las teclas
@@ -164,18 +178,18 @@ def main(args: list[str]=[]) -> int:
     # Nivel de OD en funcion del tiempo
     plt.figure(1)
     plt.plot(data_time, data_od_value)
-    plt.savefig("od.png")
+    plt.savefig("graph/od.png")
 
     # Nivel de la entrada en funcion al tiempo
     plt.figure(2)
     plt.plot(data_time, data_ramp_value)
-    plt.savefig("input.png")
+    plt.savefig("graph/input.png")
 
     logging.info("Ejecución terminada")
 
 if __name__ == "__main__":
     # Prueba
-    sys.exit(main(["-c_max=3.86", "-c_min=0.6", "-tau=1", "-rpm_max=2800"]))
+    sys.exit(main(["-c_max=3.86", "-c_min=0.6", "-tau=1", "-rpm_max=2800", "-rpm_acel=0.6"]))
     
     # Real
     #sys.exit(main(sys.argv))
