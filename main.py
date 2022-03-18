@@ -5,7 +5,6 @@ import sys
 import threading
 import time
 import logging
-from soupsieve import select
 import sympy as sym
 import matplotlib.pyplot as plt
 import socket
