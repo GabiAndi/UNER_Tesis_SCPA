@@ -5,10 +5,17 @@ import sys
 import threading
 import time
 import logging
+from soupsieve import select
 import sympy as sym
 import matplotlib.pyplot as plt
+import socket
 
 from laplace import laplaceInput
+
+
+# Constantes
+HOST = ""
+PORT = 36001
 
 # Variables globales
 data_od_value = []
@@ -16,6 +23,15 @@ data_ramp_value = []
 data_time = []
 exit = False
 rpm = 0
+
+# Tiempo de resuesta del sensor
+TIME_SENSOR = 1
+
+# Tiempo de salto para cálculo del sensor
+TIME_STEP = 0.01
+
+# Cliente
+clientSocket:socket.socket = None
 
 def scpa(c_max: float, c_min: float, tau: float, rpm_max: float, rpm_acel: float):
     global exit
@@ -54,7 +70,7 @@ def scpa(c_max: float, c_min: float, tau: float, rpm_max: float, rpm_acel: float
     current_rpm = rpm
     t_delta = 0
 
-    while(not exit):
+    while not exit:
         # Si el tiempo de operación fue largo se recorta el vector de datos
         if t_t > (7 + t_delta):
             data_od_value.clear()
@@ -94,30 +110,80 @@ def scpa(c_max: float, c_min: float, tau: float, rpm_max: float, rpm_acel: float
         data_ramp_value.append(u_t)
         data_time.append(len(data_time))
 
-        t_t += 0.01
+        t_t += TIME_STEP
 
-        time.sleep(0.05)
+        time.sleep(TIME_SENSOR)
 
     logging.info("Cerrando")
 
 def capture():
     global exit
-    global rpm
 
     logging.info("Iniciando")
 
-    while (not exit):
+    while not exit:
         inputValue = getpass("")
 
         if inputValue == "exit":
             exit = True
 
-        else:
-            rpm = float(inputValue)
-
-            logging.info("rpm = %f", rpm)
-
     logging.info("Cerrando")
+
+def server():
+    global exit
+    global rpm
+    global clientSocket
+
+    # Abrimos el servidor
+    logging.info("Iniciando servidor")
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as serverSocket:
+        serverSocket.bind((HOST, PORT))
+        serverSocket.listen()
+
+        logging.info(f"Iniciado por el puerto {PORT}")
+
+        serverSocket.setblocking(False)
+
+        while not exit:
+            try:
+                (clientSocket, address) = serverSocket.accept()
+
+                clientSocket.setblocking(False)
+
+                logging.info(f"Cliente desde {address}")
+
+                disconnected = False
+
+                while (not exit) or (not disconnected):
+                    try:
+                        data = clientSocket.recv(1024)
+
+                        if not data:
+                            break
+
+                        data = data.decode('utf-8')
+
+                        logging.info(f"Recibido desde {address}: {data}")
+
+                        if data == "od":
+                            clientSocket.sendall(bytes(f"{data_od_value[len(data_od_value) - 1]}", "utf-8"))
+
+                        if data.find("rpm=") == 0:
+                            rpm = float(data.strip("rpm="))     
+
+                    except socket.timeout:
+                        pass
+
+                    except socket.error:
+                        disconnected = True
+
+                logging.info(f"Cliente desconectado desde {address}")
+
+            except socket.error:
+                pass
+
+        logging.info("Servidor cerrado")
 
 def main(args: list[str]=[]) -> int:
     global data_od_value
@@ -171,9 +237,14 @@ def main(args: list[str]=[]) -> int:
     threadCapture = threading.Thread(name="Capture", target=capture)
     threadCapture.start()
 
+    # Servidor de OD
+    threadServer = threading.Thread(name="Server", target=server)
+    threadServer.start()
+
     # Se espera a que termine los hilos
     threadSCPA.join()
     threadCapture.join()
+    threadServer.join()
 
     # Nivel de OD en funcion del tiempo
     plt.figure(1)
@@ -187,9 +258,11 @@ def main(args: list[str]=[]) -> int:
 
     logging.info("Ejecución terminada")
 
+    return 0
+
 if __name__ == "__main__":
     # Prueba
-    sys.exit(main(["-c_max=3.86", "-c_min=0.6", "-tau=1", "-rpm_max=2800", "-rpm_acel=0.6"]))
+    #sys.exit(main(["-c_max=3.86", "-c_min=0.6", "-tau=1", "-rpm_max=2800", "-rpm_acel=0.6"]))
     
     # Real
-    #sys.exit(main(sys.argv))
+    sys.exit(main(sys.argv))
