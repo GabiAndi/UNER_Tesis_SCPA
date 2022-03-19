@@ -27,7 +27,7 @@ rpm = 0
 TIME_SENSOR = 1
 
 # Tiempo de salto para cálculo del sensor
-TIME_STEP = 0.01
+TIME_STEP = 0.1
 
 # Cliente
 clientSocket:socket.socket = None
@@ -165,10 +165,12 @@ def server():
 
                         logging.info(f"Recibido desde {address}: {data}")
 
-                        if data == "od":
+                        if data.find("od") != -1:
                             clientSocket.sendall(bytes(f"{data_od_value[len(data_od_value) - 1]}", "utf-8"))
 
-                        if data.find("rpm=") == 0:
+                            data = data.strip("od")
+
+                        if data.find("rpm=") != -1:
                             rpm = float(data.strip("rpm="))     
 
                     except socket.timeout:
@@ -202,19 +204,19 @@ def main(args: list[str]=[]) -> int:
     rpm_acel = None     # Rampa de aceleracion del variador
 
     for i in args:
-        if i.find("-c_max=") == 0:
+        if i.find("-c_max=") != -1:
             c_max = float(i.strip("-c_max="))
 
-        if i.find("-c_min=") == 0:
+        if i.find("-c_min=") != -1:
             c_min = float(i.strip("-c_min="))
 
-        if i.find("-tau=") == 0:
+        if i.find("-tau=") != -1:
             tau = float(i.strip("-tau="))
 
-        if i.find("-rpm_max=") == 0:
+        if i.find("-rpm_max=") != -1:
             rpm_max = float(i.strip("-rpm_max="))
 
-        if i.find("-rpm_acel=") == 0:
+        if i.find("-rpm_acel=") != -1:
             rpm_acel = float(i.strip("-rpm_acel="))
 
     if (c_max is None) or (c_min is None) or (tau is None) or (rpm_max is None) or (rpm_acel is None):
