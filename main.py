@@ -16,18 +16,18 @@ from laplace import laplaceInput
 HOST = ""
 PORT = 36001
 
+# Tiempo de resuesta del sensor
+TIME_SENSOR = 1
+
+# Tiempo de salto para cálculo del sensor
+TIME_STEP = 0.1
+
 # Variables globales
 data_od_value = []
 data_ramp_value = []
 data_time = []
 exit = False
 rpm = 0
-
-# Tiempo de resuesta del sensor
-TIME_SENSOR = 1
-
-# Tiempo de salto para cálculo del sensor
-TIME_STEP = 0.1
 
 # Cliente
 clientSocket:socket.socket = None
@@ -50,6 +50,8 @@ def scpa(c_max: float, c_min: float, tau: float, rpm_max: float, rpm_acel: float
     T = sym.Symbol('tau', real=True)
     k = sym.Symbol('k', real=True)
 
+    p = sym.Symbol('p', real=True)
+
     # Variable de tiempo
     t_t = 0.01
 
@@ -58,7 +60,7 @@ def scpa(c_max: float, c_min: float, tau: float, rpm_max: float, rpm_acel: float
     C_s = k / (T * s + 1)
 
     # Entrada
-    U = laplaceInput(rpm / rpm_max)
+    U = laplaceInput()
 
     U_s = U.getInput()
 
@@ -68,17 +70,22 @@ def scpa(c_max: float, c_min: float, tau: float, rpm_max: float, rpm_acel: float
     # Variables
     current_rpm = rpm
     t_delta = 0
+    k_i_i = 0
 
     while not exit:
         # Si el tiempo de operación fue largo se recorta el vector de datos
-        if t_t > (7 + t_delta):
+        if t_t > (6.5 + t_delta):
             data_od_value.clear()
-            data_ramp_value.clear();
+            data_ramp_value.clear()
             data_time.clear()
+
+            t_delta = 0
 
             t_t = 0.01
 
-            U = laplaceInput((rpm / rpm_max) * (1 + 1 / s))
+            k_i_i = rpm / rpm_max
+
+            U = laplaceInput((1 + 1 / s) * p, [0, 0, 0, k_i_i, 0])
 
             U_s = U.getInput()
 
@@ -99,10 +106,10 @@ def scpa(c_max: float, c_min: float, tau: float, rpm_max: float, rpm_acel: float
             current_rpm = rpm
 
         # Se sustituyen los valores
-        c_t = sym.exp.subs(G_t, ([a, c_min], [k, c_max - c_min], [T, tau], [t, t_t]))
-        u_t = sym.exp.subs(U_t, ([t, t_t], ))
+        c_t = sym.exp.subs(G_t, ([a, c_min], [k, c_max - c_min], [T, tau], [t, t_t], [p, k_i_i]))
+        u_t = sym.exp.subs(U_t, ([t, t_t], [p, k_i_i]))
 
-        logging.info("t = %f, OD = %f", t_t, c_t)
+        logging.debug("t = %f, OD = %f", t_t, c_t)
 
         # Se guarda para graficar
         data_od_value.append(c_t)
@@ -166,7 +173,8 @@ def server():
                         logging.info(f"Recibido desde {address}: {data}")
 
                         if data.find("od") != -1:
-                            clientSocket.sendall(bytes(f"{data_od_value[len(data_od_value) - 1]}", "utf-8"))
+                            if len(data_od_value) > 0:
+                                clientSocket.sendall(bytes(f"{data_od_value[len(data_od_value) - 1]}", "utf-8"))
 
                             data = data.strip("od")
 
@@ -192,7 +200,7 @@ def main(args: list[str]=[]) -> int:
     global data_time
 
     # Logging
-    logging.basicConfig(format='%(asctime)s [%(levelname)s] - %(threadName)s: %(message)s', level=logging.INFO)
+    logging.basicConfig(format='%(asctime)s [%(levelname)s] - %(threadName)s: %(message)s', level=logging.DEBUG)
 
     logging.info("Ejecución iniciada")
 
@@ -263,7 +271,7 @@ def main(args: list[str]=[]) -> int:
 
 if __name__ == "__main__":
     # Prueba
-    #sys.exit(main(["-c_max=3.86", "-c_min=0.6", "-tau=1", "-rpm_max=2800", "-rpm_acel=0.6"]))
+    sys.exit(main(["-c_max=3.86", "-c_min=0.6", "-tau=1", "-rpm_max=2800", "-rpm_acel=0.6"]))
     
     # Real
-    sys.exit(main(sys.argv))
+    #sys.exit(main(sys.argv))

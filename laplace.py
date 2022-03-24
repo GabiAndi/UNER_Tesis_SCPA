@@ -8,9 +8,9 @@ class laplaceInput():
     __U: list = None
     __U_k: list[list] = None
 
-    def __init__(self, U_0 = 0) -> None:
+    def __init__(self, U_0 = 0, U_k: list = [0, 0, 0, 0, 0]) -> None:
         self.__U = [U_0]
-        self.__U_k = [[0, 0, 0, 0, 0]]
+        self.__U_k = [[U_k[0], U_k[1], U_k[2], U_k[3], U_k[4]]]
 
     def addRampInput(self, t_i: float, k_f: float, m: float) -> None:
         # Simbolos
