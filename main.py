@@ -109,6 +109,13 @@ def scpa(c_max: float, c_min: float, tau: float, rpm_max: float, rpm_acel: float
         c_t = sym.exp.subs(G_t, ([a, c_min], [k, c_max - c_min], [T, tau], [t, t_t], [p, k_i_i]))
         u_t = sym.exp.subs(U_t, ([t, t_t], [p, k_i_i]))
 
+        # Parche para valores no reemplazados de las funciones
+        if type(c_t) != sym.core.numbers.Float:
+            c_t = c_t.args[0]
+
+        if type(u_t) != sym.core.numbers.Float:
+            u_t = u_t.args[0]
+
         logging.debug("t = %f, OD = %f", t_t, c_t)
 
         # Se guarda para graficar
